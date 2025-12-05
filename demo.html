@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Looker - Gaze Tracking Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: white;
+            background-image: radial-gradient(circle, black 1px, transparent 1px);
+            background-size: 20px 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: black;
+            padding: 2rem;
+        }
+
+        .main-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4rem;
+            width: 100%;
+            max-width: 1400px;
+            perspective: 1000px;
+        }
+
+        .left-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 3rem;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+            transform-style: preserve-3d;
+            cursor: pointer;
+        }
+
+        .left-section:hover {
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .right-section {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .divider {
+            width: 3px;
+            height: 80%;
+            background: black;
+            min-height: 400px;
+        }
+
+        .container {
+            text-align: center;
+            transform-style: preserve-3d;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1.5rem;
+            font-weight: 900;
+            transition: transform 0.15s ease-out;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            background: linear-gradient(135deg, #000000 0%, #333333 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            line-height: 1.2;
+        }
+
+        p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+            text-align: center;
+            transition: transform 0.15s ease-out;
+            line-height: 1.7;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .face-container {
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            background: white;
+            position: relative;
+            cursor: none;
+        }
+
+        .face-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: opacity 0.1s ease-out;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+                gap: 2rem;
+            }
+
+            .divider {
+                width: 60%;
+                height: 3px;
+                background: black;
+                min-height: 3px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .face-container {
+                width: 300px;
+                height: 300px;
+            }
+
+            .left-section {
+                text-align: center;
+            }
+
+            p {
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="left-section">
+            <div class="container">
+                <h1>Face Looker</h1>
+                <p>Move your cursor around - the face will follow!</p>
+                <p>This interactive demo showcases gaze tracking technology. The face responds to your mouse movements, creating an engaging visual experience.</p>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="right-section">
+            <div class="face-container" id="faceContainer">
+                <img id="faceImage" class="face-image" alt="Face following gaze">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Grid configuration (must match your generated images)
+        const P_MIN = -15;
+        const P_MAX = 15;
+        const STEP = 3;
+        const SIZE = 256;
+        
+        // Change this path to use different image sets
+        // Example: if you extract a new ZIP to 'faces2/' folder, change to:
+        // const BASE_PATH = 'faces2/';
+        const BASE_PATH = 'face_looker/face_looker/faces 4/';
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function quantizeToGrid(val) {
+            const raw = P_MIN + (val + 1) * (P_MAX - P_MIN) / 2;
+            const snapped = Math.round(raw / STEP) * STEP;
+            return clamp(snapped, P_MIN, P_MAX);
+        }
+
+        function sanitize(val) {
+            const str = Number(val).toFixed(1);
+            return str.replace('-', 'm').replace('.', 'p');
+        }
+
+        function gridToFilename(px, py) {
+            return `gaze_px${sanitize(px)}_py${sanitize(py)}_${SIZE}.webp`;
+        }
+
+        const faceImage = document.getElementById('faceImage');
+        const container = document.getElementById('faceContainer');
+
+        function setFromClient(clientX, clientY) {
+            const rect = container.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+
+            const nx = (clientX - centerX) / (rect.width / 2);
+            const ny = (centerY - clientY) / (rect.height / 2);
+
+            const clampedX = clamp(nx, -1, 1);
+            const clampedY = clamp(ny, -1, 1);
+
+            const px = quantizeToGrid(clampedX);
+            const py = quantizeToGrid(clampedY);
+
+            const filename = gridToFilename(px, py);
+            const imagePath = `${BASE_PATH}${filename}`;
+            faceImage.src = imagePath;
+        }
+
+        function handleMouseMove(e) {
+            setFromClient(e.clientX, e.clientY);
+        }
+
+        function handleTouchMove(e) {
+            if (e.touches && e.touches.length > 0) {
+                const t = e.touches[0];
+                setFromClient(t.clientX, t.clientY);
+            }
+        }
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('touchmove', handleTouchMove, { passive: true });
+
+        // Initialize at center
+        const rect = container.getBoundingClientRect();
+        setFromClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
+
+        // 3D Card Effect - Only for text section (left section)
+        const leftSection = document.querySelector('.left-section');
+        const containerDiv = document.querySelector('.container');
+        const h1 = document.querySelector('h1');
+        const paragraphs = document.querySelectorAll('p');
+
+        function handle3DCardEffect(element, event) {
+            const rect = element.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+
+            const rotateX = (y - centerY) / 15;
+            const rotateY = (centerX - x) / 15;
+
+            element.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+
+            // Add depth to child elements
+            h1.style.transform = `translateZ(40px)`;
+            paragraphs.forEach((p, index) => {
+                p.style.transform = `translateZ(${25 + index * 10}px)`;
+            });
+        }
+
+        function reset3DCard(element) {
+            element.style.transform = 'perspective(1000px) rotateX(0) rotateY(0) scale3d(1, 1, 1)';
+            
+            h1.style.transform = 'translateZ(0)';
+            paragraphs.forEach(p => {
+                p.style.transform = 'translateZ(0)';
+            });
+        }
+
+        // Add event listeners for 3D card effect on left section only
+        if (leftSection) {
+            leftSection.addEventListener('mousemove', (e) => {
+                handle3DCardEffect(leftSection, e);
+            });
+            leftSection.addEventListener('mouseleave', () => {
+                reset3DCard(leftSection);
+            });
+        }
+    </script>
+</body>
+</html>
